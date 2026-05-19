@@ -1,0 +1,103 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Default deny
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // Helper functions
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isAdmin() {
+      return isSignedIn() && (
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin' ||
+        request.auth.token.email == 'ashokpal76199@gmail.com'
+      );
+    }
+
+    function isOwner(userId) {
+      return isSignedIn() && request.auth.uid == userId;
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    // --- Users ---
+    match /users/{userId} {
+      allow read: if true; // Allowed for username availability and referral code checks
+      allow create: if isSignedIn() && request.auth.uid == userId;
+      allow update: if isSignedIn(); // Allowed for profile updates and referral rewards
+    }
+
+    // --- Tournaments ---
+    match /tournaments/{tournamentId} {
+      allow read: if true;
+      allow write: if isAdmin();
+      allow update: if isSignedIn(); // Allow updating registeredCount during registration
+    }
+
+    // --- Registrations ---
+    match /registrations/{registrationId} {
+      allow read: if isSignedIn();
+      allow create: if isSignedIn(); // Allowed for admin/self registration
+      allow update, delete: if isAdmin() || (isSignedIn() && resource.data.userId == request.auth.uid);
+    }
+
+    // --- Transactions ---
+    match /transactions/{transactionId} {
+      allow read: if isAdmin() || (isSignedIn() && resource.data.userId == request.auth.uid);
+      allow create: if isSignedIn(); // Players can create transactions for themselves or referrers
+      allow update, delete: if isAdmin();
+    }
+
+    // --- Payment Requests (Deposits) ---
+    match /paymentRequests/{requestId} {
+      allow read: if isAdmin() || (isSignedIn() && resource.data.userId == request.auth.uid);
+      allow create: if isSignedIn() && request.resource.data.userId == request.auth.uid;
+      allow update: if isAdmin();
+    }
+
+    // --- Withdrawal Requests ---
+    match /withdrawalRequests/{requestId} {
+      allow read: if isAdmin() || (isSignedIn() && resource.data.userId == request.auth.uid);
+      allow create: if isSignedIn() && request.resource.data.userId == request.auth.uid;
+      allow update: if isAdmin();
+    }
+
+    // --- Notifications ---
+    match /notifications/{notificationId} {
+      allow read: if isSignedIn() && resource.data.userId == request.auth.uid;
+      allow create: if isSignedIn(); // Players can trigger notifications (e.g., to referrer)
+      allow update, delete: if isAdmin();
+    }
+
+    // --- System ---
+    match /system/news {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    match /system/config {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    // --- Redeem Codes ---
+    match /redeemCodes/{codeId} {
+      allow read: if isSignedIn();
+      allow write: if isAdmin();
+      allow update: if isSignedIn();
+    }
+
+    // --- Referrals ---
+    match /referrals/{referralId} {
+      allow read: if isSignedIn() && (resource.data.referrerId == request.auth.uid || resource.data.referredUserId == request.auth.uid || isAdmin());
+      allow create: if isSignedIn();
+      allow update, delete: if isAdmin();
+    }
+  }
+}

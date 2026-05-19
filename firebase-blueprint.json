@@ -1,0 +1,181 @@
+{
+  "entities": {
+    "User": {
+      "title": "User",
+      "description": "User profile and state",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "displayId": { "type": "string" },
+        "email": { "type": "string" },
+        "password": { "type": "string" },
+        "username": { "type": "string" },
+        "fullName": { "type": "string" },
+        "phoneNumber": { "type": "string" },
+        "profileImage": { "type": "string" },
+        "role": { "type": "string", "enum": ["player", "admin"] },
+        "walletBalance": { "type": "number" },
+        "ign": { "type": "string" },
+        "uid": { "type": "string" },
+        "referralCode": { "type": "string" },
+        "referredBy": { "type": "string" },
+        "referralsCount": { "type": "number" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "displayId", "email", "role", "walletBalance", "createdAt", "updatedAt"]
+    },
+    "Referral": {
+      "title": "Referral",
+      "description": "Record of a successful referral",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "referrerId": { "type": "string" },
+        "referredUserId": { "type": "string" },
+        "amountEarned": { "type": "number" },
+        "timestamp": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "referrerId", "referredUserId", "amountEarned", "timestamp"]
+    },
+    "Tournament": {
+      "title": "Tournament",
+      "description": "Tournament details",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "date": { "type": "string", "format": "date-time" },
+        "time": { "type": "string" },
+        "prizePool": { "type": "number" },
+        "entryFee": { "type": "number" },
+        "map": { "type": "string" },
+        "version": { "type": "string" },
+        "status": { "type": "string", "enum": ["upcoming", "ongoing", "completed", "cancelled"] },
+        "maxSlots": { "type": "number" },
+        "registeredCount": { "type": "number" },
+        "winnerId": { "type": "string" },
+        "category": { "type": "string" },
+        "adminId": { "type": "string" },
+        "roomId": { "type": "string" },
+        "roomPassword": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      }
+    },
+    "Registration": {
+      "title": "Registration",
+      "description": "Registration for a tournament",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "tournamentId": { "type": "string" },
+        "userId": { "type": "string" },
+        "ign": { "type": "string" },
+        "uid": { "type": "string" },
+        "registrationDate": { "type": "string", "format": "date-time" },
+        "status": { "type": "string", "enum": ["pending", "confirmed", "cancelled"] }
+      }
+    },
+    "Transaction": {
+      "title": "Transaction",
+      "description": "Wallet transaction",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "userId": { "type": "string" },
+        "type": { "type": "string", "enum": ["deposit", "withdrawal", "entry_fee", "prize_win"] },
+        "amount": { "type": "number" },
+        "relatedEntityId": { "type": "string" },
+        "description": { "type": "string" },
+        "transactionDate": { "type": "string", "format": "date-time" },
+        "status": { "type": "string", "enum": ["completed", "pending", "failed"] }
+      }
+    },
+    "PaymentRequest": {
+      "title": "PaymentRequest",
+      "description": "Deposit request",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "userId": { "type": "string" },
+        "amount": { "type": "number" },
+        "utr": { "type": "string" },
+        "qrCodeUrl": { "type": "string" },
+        "status": { "type": "string", "enum": ["pending", "accepted", "declined"] },
+        "requestDate": { "type": "string", "format": "date-time" },
+        "processedByAdminId": { "type": "string" },
+        "processedDate": { "type": "string", "format": "date-time" }
+      }
+    },
+    "WithdrawalRequest": {
+      "title": "WithdrawalRequest",
+      "description": "Withdrawal request",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "userId": { "type": "string" },
+        "amount": { "type": "number" },
+        "method": { "type": "string", "enum": ["upi", "redeem_code"] },
+        "upiId": { "type": "string" },
+        "redeemCode": { "type": "string" },
+        "status": { "type": "string", "enum": ["pending", "accepted", "declined"] },
+        "requestDate": { "type": "string", "format": "date-time" },
+        "processedByAdminId": { "type": "string" },
+        "processedDate": { "type": "string", "format": "date-time" }
+      }
+    },
+    "Notification": {
+      "title": "Notification",
+      "description": "User notification",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "userId": { "type": "string" },
+        "title": { "type": "string" },
+        "message": { "type": "string" },
+        "type": { "type": "string", "enum": ["info", "success", "warning", "error"] },
+        "isRead": { "type": "boolean" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      }
+    },
+    "SystemConfig": {
+      "title": "SystemConfig",
+      "description": "Global settings",
+      "type": "object",
+      "properties": {
+        "qrCodeUrl": { "type": "string" },
+        "news": { "type": "string" },
+        "adminEmail": { "type": "string" },
+        "adminPassword": { "type": "string" },
+        "playerEmail": { "type": "string" },
+        "playerPassword": { "type": "string" }
+      }
+    }
+  },
+  "firestore": {
+    "/users/{userId}": { "schema": "User", "description": "User profiles" },
+    "/tournaments/{tournamentId}": { "schema": "Tournament", "description": "Tournaments" },
+    "/registrations/{registrationId}": { "schema": "Registration", "description": "Tournament registrations" },
+    "/transactions/{transactionId}": { "schema": "Transaction", "description": "Wallet transactions" },
+    "/paymentRequests/{requestId}": { "schema": "PaymentRequest", "description": "Deposit requests" },
+    "/withdrawalRequests/{requestId}": { "schema": "WithdrawalRequest", "description": "Withdrawal requests" },
+    "/notifications/{notificationId}": { "schema": "Notification", "description": "User notifications" },
+    "/redeemCodes/{codeId}": { 
+      "schema": {
+        "type": "object",
+        "properties": {
+          "code": { "type": "string" },
+          "amount": { "type": "number" },
+          "isUsed": { "type": "boolean" },
+          "usedBy": { "type": "string" },
+          "usedAt": { "type": "string", "format": "date-time" },
+          "createdAt": { "type": "string", "format": "date-time" }
+        }
+      },
+      "description": "Redeemable reward codes"
+    },
+    "/system/news": { "schema": { "type": "object", "properties": { "content": { "type": "string" } } }, "description": "Global news" },
+    "/system/config": { "schema": "SystemConfig", "description": "Global system configuration" }
+  }
+}
