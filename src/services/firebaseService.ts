@@ -447,7 +447,7 @@ export const loginUser = async (email: string, password: string): Promise<{ user
         username: firebaseUser.displayName || firebaseUser.email?.split('@')[0] || 'User',
         ign: firebaseUser.email?.split('@')[0] || 'User',
         displayId,
-        role: (firebaseUser.email === 'ashokpal76199@gmail.com' || (firebaseUser.phoneNumber && ['+917619976199'].includes(firebaseUser.phoneNumber))) ? 'admin' : 'player',
+        role: firebaseUser.email === 'ashokpal76199@gmail.com' ? 'admin' : 'player',
         walletBalance: 5, // Welcome Bonus
         profileImage: firebaseUser.photoURL || '',
         referralCode,
@@ -520,7 +520,7 @@ export const loginWithGoogle = async (): Promise<{ user: User } | null> => {
         username: firebaseUser.displayName || 'User',
         ign: firebaseUser.displayName || 'User',
         displayId,
-        role: (firebaseUser.email === 'ashokpal76199@gmail.com' || (firebaseUser.phoneNumber && ['+917619976199'].includes(firebaseUser.phoneNumber))) ? 'admin' : 'player',
+        role: firebaseUser.email === 'ashokpal76199@gmail.com' ? 'admin' : 'player',
         walletBalance: 5, // Welcome Bonus
         profileImage: firebaseUser.photoURL || '',
         referralCode,
