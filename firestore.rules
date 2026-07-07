@@ -28,9 +28,9 @@ service cloud.firestore {
 
     // --- Users ---
     match /users/{userId} {
-      allow read: if true; // Allowed for username availability and referral code checks
+      allow read: if isSignedIn();
       allow create: if isSignedIn() && request.auth.uid == userId;
-      allow update: if isSignedIn(); // Allowed for profile updates and referral rewards
+      allow update: if isSignedIn(); // Allow profile updates and cross-user referral rewards
     }
 
     // --- Tournaments ---
@@ -43,14 +43,14 @@ service cloud.firestore {
     // --- Registrations ---
     match /registrations/{registrationId} {
       allow read: if isSignedIn();
-      allow create: if isSignedIn(); // Allowed for admin/self registration
+      allow create: if isSignedIn() && request.resource.data.userId == request.auth.uid;
       allow update, delete: if isAdmin() || (isSignedIn() && resource.data.userId == request.auth.uid);
     }
 
     // --- Transactions ---
     match /transactions/{transactionId} {
       allow read: if isAdmin() || (isSignedIn() && resource.data.userId == request.auth.uid);
-      allow create: if isSignedIn(); // Players can create transactions for themselves or referrers
+      allow create: if isSignedIn(); // Players create transactions for entry fees, referrals, etc.
       allow update, delete: if isAdmin();
     }
 

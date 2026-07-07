@@ -7,19 +7,9 @@ interface ButtonProps {
   variant?: 'primary' | 'secondary' | 'danger';
   className?: string;
   disabled?: boolean;
-  type?: 'button' | 'submit' | 'reset';
-  loading?: boolean;
 }
 
-export default function Button({ 
-  children, 
-  onClick, 
-  variant = 'primary', 
-  className = '', 
-  disabled = false,
-  type = 'button',
-  loading = false
-}: ButtonProps) {
+export default function Button({ children, onClick, variant = 'primary', className = '', disabled = false }: ButtonProps) {
   const baseStyles = 'px-6 py-3 rounded-xl font-bold transition-all duration-300 text-sm uppercase tracking-wider flex items-center justify-center gap-2';
   let variantStyles = '';
 
@@ -37,15 +27,11 @@ export default function Button({
 
   return (
     <motion.button
-      whileTap={{ scale: (disabled || loading) ? 1 : 0.95 }}
+      whileTap={{ scale: disabled ? 1 : 0.95 }}
       onClick={onClick}
-      type={type}
-      className={`${baseStyles} ${variantStyles} ${className} ${(disabled || loading) ? 'opacity-50 cursor-not-allowed' : ''}`}
-      disabled={disabled || loading}
+      className={`${baseStyles} ${variantStyles} ${className} ${disabled ? 'opacity-50 cursor-not-allowed grayscale' : ''}`}
+      disabled={disabled}
     >
-      {loading ? (
-        <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
-      ) : null}
       {children}
     </motion.button>
   );

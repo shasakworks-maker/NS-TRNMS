@@ -387,22 +387,7 @@ export const verifyOtp = async (email: string, otp: string): Promise<boolean> =>
   return data.success;
 };
 
-export const checkUsernameAvailability = async (username: string): Promise<boolean> => {
-  const q = query(collection(db, 'users'), where('username', '==', username));
-  const snap = await getDocs(q);
-  return snap.empty;
-};
-
-export const getUserByReferralCode = async (code: string): Promise<User | null> => {
-  const q = query(collection(db, 'users'), where('referralCode', '==', code.toUpperCase()));
-  const snap = await getDocs(q);
-  if (!snap.empty) {
-    return { ...snap.docs[0].data(), id: snap.docs[0].id } as User;
-  }
-  return null;
-};
-
-export const createUser = async (userData: Omit<User, 'id' | 'displayId' | 'createdAt' | 'updatedAt' | 'role' | 'walletBalance' | 'uid'> & { password?: string }): Promise<User> => {
+export const createUser = async (userData: Omit<User, 'id' | 'displayId' | 'createdAt' | 'updatedAt' | 'role' | 'walletBalance'> & { password?: string }): Promise<User> => {
   try {
     // 1. Create User in Firebase Auth
     const userCredential = await createUserWithEmailAndPassword(auth, userData.email, userData.password || 'default123');
@@ -410,14 +395,13 @@ export const createUser = async (userData: Omit<User, 'id' | 'displayId' | 'crea
 
     // 2. Create User Profile in Firestore
     const displayId = `NS-${Math.floor(1000 + Math.random() * 9000)}`;
-    
     const newUser: User = {
       ...userData,
       id: firebaseUser.uid,
       uid: firebaseUser.uid,
       displayId,
-      role: firebaseUser.email === 'ashokpal76199@gmail.com' ? 'admin' : 'player',
-      walletBalance: 5, // Welcome Bonus
+      role: 'player',
+      walletBalance: 0,
       createdAt: new Date(),
       updatedAt: new Date(),
     };
@@ -427,16 +411,6 @@ export const createUser = async (userData: Omit<User, 'id' | 'displayId' | 'crea
       createdAt: serverTimestamp(),
       updatedAt: serverTimestamp(),
     }));
-
-    // Welcome Transaction
-    await addDoc(collection(db, 'transactions'), {
-      userId: firebaseUser.uid,
-      type: TransactionType.DEPOSIT,
-      amount: 5,
-      description: 'Welcome Bonus',
-      status: TransactionStatus.COMPLETED,
-      transactionDate: serverTimestamp()
-    });
 
     return newUser;
   } catch (error: any) {
@@ -473,9 +447,11 @@ export const loginUser = async (email: string, password: string): Promise<{ user
         username: firebaseUser.displayName || firebaseUser.email?.split('@')[0] || 'User',
         ign: firebaseUser.email?.split('@')[0] || 'User',
         displayId,
-        role: firebaseUser.email === 'ashokpal76199@gmail.com' ? 'admin' : 'player',
+        role: (firebaseUser.email === 'ashokpal76199@gmail.com' || (firebaseUser.phoneNumber && ['+917619976199'].includes(firebaseUser.phoneNumber))) ? 'admin' : 'player',
         walletBalance: 5, // Welcome Bonus
         profileImage: firebaseUser.photoURL || '',
+        referralCode,
+        referralsCount: 0,
         createdAt: new Date(),
         updatedAt: new Date(),
       };
@@ -544,9 +520,11 @@ export const loginWithGoogle = async (): Promise<{ user: User } | null> => {
         username: firebaseUser.displayName || 'User',
         ign: firebaseUser.displayName || 'User',
         displayId,
-        role: firebaseUser.email === 'ashokpal76199@gmail.com' ? 'admin' : 'player',
+        role: (firebaseUser.email === 'ashokpal76199@gmail.com' || (firebaseUser.phoneNumber && ['+917619976199'].includes(firebaseUser.phoneNumber))) ? 'admin' : 'player',
         walletBalance: 5, // Welcome Bonus
         profileImage: firebaseUser.photoURL || '',
+        referralCode,
+        referralsCount: 0,
         createdAt: new Date(),
         updatedAt: new Date(),
       };
@@ -1287,5 +1265,100 @@ export const redeemRewardCode = async (userId: string, code: string): Promise<{ 
   }
 };
 
-// Referral Service Removed
+// --- Referral Service ---
+export const applyReferralCode = async (userId: string, code: string): Promise<{ success: boolean; message: string }> => {
+  try {
+    const referralQuery = query(collection(db, 'users'), where('referralCode', '==', code));
+    const referrerSnap = await getDocs(referralQuery);
+    
+    if (referrerSnap.empty) {
+      return { success: false, message: 'Invalid referral code.' };
+    }
+    
+    const referrerDoc = referrerSnap.docs[0];
+    const referrerId = referrerDoc.id;
+    
+    return await runTransaction(db, async (transaction) => {
+      const userRef = doc(db, 'users', userId);
+      const userDoc = await transaction.get(userRef);
+      if (!userDoc.exists()) throw new Error('User not found');
+      
+      const userData = userDoc.data() as User;
+      if (userData.referredBy) return { success: false, message: 'You have already used a referral code.' };
+      if (userData.referralCode === code) return { success: false, message: 'You cannot use your own referral code.' };
 
+      const referrerRef = doc(db, 'users', referrerId);
+      
+      const referralRewardAmount = 10;
+      const referredRewardAmount = 5;
+
+      transaction.update(userRef, {
+        referredBy: referrerId,
+        walletBalance: increment(referredRewardAmount),
+        updatedAt: serverTimestamp()
+      });
+
+      transaction.update(referrerRef, {
+        referralsCount: increment(1),
+        walletBalance: increment(referralRewardAmount),
+        updatedAt: serverTimestamp()
+      });
+
+      const referralRef = doc(collection(db, 'referrals'));
+      transaction.set(referralRef, {
+        referrerId,
+        referredUserId: userId,
+        amountEarned: referralRewardAmount,
+        timestamp: serverTimestamp()
+      });
+
+      const transRef1 = doc(collection(db, 'transactions'));
+      transaction.set(transRef1, {
+        userId: referrerId,
+        type: 'prize_win',
+        amount: referralRewardAmount,
+        description: 'Referral reward',
+        status: 'completed',
+        relatedEntityId: referralRef.id,
+        transactionDate: serverTimestamp()
+      });
+
+      const transRef2 = doc(collection(db, 'transactions'));
+      transaction.set(transRef2, {
+        userId: userId,
+        type: 'prize_win',
+        amount: referredRewardAmount,
+        description: 'Signup referral bonus',
+        status: 'completed',
+        relatedEntityId: referralRef.id,
+        transactionDate: serverTimestamp()
+      });
+
+      const notifRef1 = doc(collection(db, 'notifications'));
+      transaction.set(notifRef1, {
+        userId: referrerId,
+        title: 'Referral Bonus!',
+        message: `You earned ₹${referralRewardAmount} for referring a new player. Keep it up!`,
+        type: 'success',
+        isRead: false,
+        createdAt: serverTimestamp()
+      });
+
+      return { success: true, message: `Referral code applied! You earned ₹${referredRewardAmount}.` };
+    });
+  } catch (error: any) {
+    handleFirestoreError(error, OperationType.WRITE, 'referrals');
+    return { success: false, message: error.message || 'Error applying referral code.' };
+  }
+};
+
+export const getReferralsByUserId = async (referrerId: string) => {
+  try {
+    const q = query(collection(db, 'referrals'), where('referrerId', '==', referrerId), orderBy('timestamp', 'desc'));
+    const snap = await getDocs(q);
+    return snap.docs.map(d => ({ ...d.data(), id: d.id, timestamp: (d.data().timestamp as Timestamp).toDate() }));
+  } catch (error) {
+    console.error('Error fetching referrals:', error);
+    return [];
+  }
+};

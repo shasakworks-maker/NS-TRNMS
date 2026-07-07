@@ -12,6 +12,9 @@ export interface User {
   ign: string;
   uid: string;
   stats?: UserStats;
+  referralCode?: string;
+  referredBy?: string;
+  referralsCount?: number;
   createdAt: Date;
   updatedAt: Date;
 }
