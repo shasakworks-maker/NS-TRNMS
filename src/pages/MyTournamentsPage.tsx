@@ -67,10 +67,12 @@ export default function MyTournamentsPage({ currentUserId }: MyTournamentsPagePr
           className="absolute inset-y-1 bg-[var(--color-accent)] rounded-xl shadow-[0_0_20px_rgba(0,200,255,0.3)]"
           initial={false}
           animate={{
-            x: activeTab === 'active' ? '0%' : '100%',
+            x: activeTab === 'active' ? '4px' : 'calc(100% - 4px)',
+            left: activeTab === 'active' ? 0 : 'auto',
+            right: activeTab === 'past' ? 0 : 'auto',
+            width: 'calc(50% - 8px)'
           }}
           transition={{ type: "spring", stiffness: 300, damping: 30 }}
-          style={{ width: 'calc(50% - 4px)', left: '4px' }}
         />
       </div>
 
