@@ -1,153 +1,106 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useRef } from 'react';
 import { motion } from 'motion/react';
 import { UserRole } from '../constants';
+import { loginWithPhone, confirmPhoneOtp } from '../services/firebaseService';
+import { RecaptchaVerifier } from 'firebase/auth';
 import { auth } from '../lib/firebase';
-import { RecaptchaVerifier, signInWithPhoneNumber } from 'firebase/auth';
-import { Phone, ShieldCheck, ArrowRight, MessageSquare, Edit2, RotateCw, HelpCircle, Copy, Check } from 'lucide-react';
-import { ADMIN_PHONE_NUMBERS } from '../App';
+import { Phone as PhoneIcon, ShieldAlert, ArrowRight, Lock, KeyRound } from 'lucide-react';
 
 interface LoginPageProps {
   onLogin: (role: UserRole, userId: string) => void;
 }
 
 export default function LoginPage({ onLogin }: LoginPageProps) {
-  const [phoneNumber, setPhoneNumber] = useState('');
-  const [otp, setOtp] = useState('');
-  const [verificationId, setVerificationId] = useState<any>(null);
   const [step, setStep] = useState<'phone' | 'otp'>('phone');
+  const [phone, setPhone] = useState('');
+  const [otp, setOtp] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
-  const [resendTimer, setResendTimer] = useState(0);
-  const [showTroubleshooting, setShowTroubleshooting] = useState(false);
-  const [copiedDomain, setCopiedDomain] = useState(false);
+  
+  const [confirmationResult, setConfirmationResult] = useState<any>(null);
+  const recaptchaVerifierRef = useRef<any>(null);
 
-  const handleCopyText = (text: string) => {
-    navigator.clipboard.writeText(text);
-    setCopiedDomain(true);
-    setTimeout(() => setCopiedDomain(false), 2000);
-  };
-
-  useEffect(() => {
-    let interval: any;
-    if (resendTimer > 0) {
-      interval = setInterval(() => {
-        setResendTimer((prev) => prev - 1);
-      }, 1000);
-    }
-    return () => clearInterval(interval);
-  }, [resendTimer]);
+  React.useEffect(() => {
+    return () => {
+      if (recaptchaVerifierRef.current) {
+        try {
+          recaptchaVerifierRef.current.clear();
+        } catch (e) {}
+        recaptchaVerifierRef.current = null;
+      }
+    };
+  }, []);
 
   const setupRecaptcha = () => {
+    const container = document.getElementById('recaptcha-container');
+    if (container) {
+      container.innerHTML = '';
+    }
+
+    if (recaptchaVerifierRef.current) {
+      try {
+        recaptchaVerifierRef.current.clear();
+      } catch (e) {}
+      recaptchaVerifierRef.current = null;
+    }
+
     try {
-      const container = document.getElementById('recaptcha-container');
-      if (container) {
-        // Clear any previous raw HTML to prevent duplicates
-        container.innerHTML = '';
-        
-        // Dynamically create a brand new element with a unique timestamp ID
-        const uniqueId = `recaptcha-widget-${Date.now()}`;
-        const widgetEl = document.createElement('div');
-        widgetEl.id = uniqueId;
-        container.appendChild(widgetEl);
-
-        // Always clean up previous verifier to prevent reCAPTCHA rendering conflicts
-        if ((window as any).recaptchaVerifier) {
-          try {
-            (window as any).recaptchaVerifier.clear();
-          } catch (e) {
-            console.warn('Error clearing previous recaptcha verifier:', e);
-          }
-          (window as any).recaptchaVerifier = null;
+      recaptchaVerifierRef.current = new RecaptchaVerifier(auth, 'recaptcha-container', {
+        size: 'invisible',
+        callback: () => {
+          // reCAPTCHA solved
+        },
+        'expired-callback': () => {
+          setError('reCAPTCHA expired. Please request OTP again.');
         }
-
-        (window as any).recaptchaVerifier = new RecaptchaVerifier(auth, uniqueId, {
-          size: 'invisible',
-          callback: () => {
-            // reCAPTCHA solved
-          },
-          'expired-callback': () => {
-            setError('reCAPTCHA expired. Please try again.');
-          }
-        });
-      } else {
-        throw new Error('reCAPTCHA container element not found in DOM.');
-      }
+      });
     } catch (err: any) {
       console.error('Error setting up reCAPTCHA:', err);
-      setError('Failed to initialize secure verification. Please reload.');
+      setError('Failed to initialize reCAPTCHA verifier. Please refresh and try again.');
     }
   };
 
   const handleSendOtp = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!phoneNumber) {
+    setError(null);
+    setLoading(true);
+
+    // Clean phone number input
+    const cleanedPhone = phone.trim().replace(/\s+/g, '');
+    if (!cleanedPhone) {
       setError('Please enter a valid phone number.');
+      setLoading(false);
       return;
     }
 
-    let formattedPhone = phoneNumber.trim().replace(/\s+/g, '');
-    if (!formattedPhone.startsWith('+')) {
-      if (formattedPhone.length === 10 && /^\d+$/.test(formattedPhone)) {
-        formattedPhone = `+91${formattedPhone}`;
-      } else {
-        setError('Please include country code (e.g. +919876543210)');
-        return;
-      }
+    if (cleanedPhone.length < 10) {
+      setError('Phone number must be at least 10 digits.');
+      setLoading(false);
+      return;
     }
-
-    setLoading(true);
-    setError(null);
 
     try {
       setupRecaptcha();
-      const appVerifier = (window as any).recaptchaVerifier;
-      const confirmationResult = await signInWithPhoneNumber(auth, formattedPhone, appVerifier);
-      (window as any).confirmationResult = confirmationResult;
-      setVerificationId(confirmationResult);
-      setStep('otp');
-      setResendTimer(60);
-    } catch (err: any) {
-      console.error('Error sending OTP:', err);
-      
-      // Clean up recaptcha state on error
-      if ((window as any).recaptchaVerifier) {
-        try {
-          (window as any).recaptchaVerifier.clear();
-          (window as any).recaptchaVerifier = null;
-        } catch (clearErr) {
-          console.error('Error clearing recaptcha:', clearErr);
-        }
+      const appVerifier = recaptchaVerifierRef.current;
+      if (!appVerifier) {
+        throw new Error('reCAPTCHA verification system not ready. Please try again.');
       }
 
-      // Check specifically for auth/operation-not-allowed
-      if (err.code === 'auth/operation-not-allowed' || (err.message && err.message.includes('operation-not-allowed'))) {
-        setError(
-          'Phone Sign-In is not enabled in Firebase Console.\n\n' +
-          'To fix this:\n' +
-          '1. Go to your Firebase Console.\n' +
-          '2. Navigate to Authentication > Sign-in method.\n' +
-          '3. Click "Add new provider" (or Edit if already added) and select "Phone".\n' +
-          '4. Turn on the "Enable" switch and click Save.'
-        );
-      } else if (err.code === 'auth/unauthorized-domain' || (err.message && err.message.includes('unauthorized-domain'))) {
-        setError(
-          `This domain (${window.location.hostname}) is not authorized in Firebase Auth.\n\n` +
-          'To authorize it:\n' +
-          '1. Go to Firebase Console > Authentication > Settings.\n' +
-          '2. Under "Authorized domains", click "Add domain".\n' +
-          `3. Paste this domain: ${window.location.hostname}\n` +
-          '4. Click Save and try again.'
-        );
-      } else if (err.code === 'auth/too-many-requests' || (err.message && err.message.includes('too-many-requests'))) {
-        setError(
-          'Too many requests! SMS OTP quotas might be exhausted or your IP is rate-limited.\n\n' +
-          'To bypass SMS completely during development, set up a "Phone Number for Testing" in your Firebase Console (see the Troubleshooting Guide below for instant login details).'
-        );
-      } else {
-        setError(
-          `${err.message || 'Failed to send OTP. Please try again.'}\n\n` +
-          'Tip: If you are not receiving SMS, please set up a "Phone Number for Testing" in the Firebase Console (instructions below) for a 100% reliable instant login.'
-        );
+      // Format to E.164. If doesn't start with +, assume +91 as default.
+      const formattedPhone = cleanedPhone.startsWith('+') ? cleanedPhone : `+91${cleanedPhone}`;
+
+      const result = await loginWithPhone(formattedPhone, appVerifier);
+      setConfirmationResult(result);
+      setStep('otp');
+    } catch (err: any) {
+      console.error(err);
+      setError(err.message || 'Failed to send OTP. Please check your number.');
+      // Reset reCAPTCHA to allow retry
+      if (recaptchaVerifierRef.current) {
+        try {
+          recaptchaVerifierRef.current.clear();
+        } catch (e) {}
+        recaptchaVerifierRef.current = null;
       }
     } finally {
       setLoading(false);
@@ -156,77 +109,43 @@ export default function LoginPage({ onLogin }: LoginPageProps) {
 
   const handleVerifyOtp = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!otp || otp.length < 6) {
-      setError('Please enter the 6-digit verification code.');
+    if (!confirmationResult) return;
+
+    setError(null);
+    setLoading(true);
+
+    const cleanedOtp = otp.trim();
+    if (cleanedOtp.length !== 6) {
+      setError('OTP must be a 6-digit number.');
+      setLoading(false);
       return;
     }
 
-    setLoading(true);
-    setError(null);
-
     try {
-      const confirmationResult = (window as any).confirmationResult || verificationId;
-      if (!confirmationResult) {
-        throw new Error('Verification session expired. Please request OTP again.');
-      }
-      
-      const result = await confirmationResult.confirm(otp);
-      const firebaseUser = result.user;
-      
-      const { doc, getDoc, setDoc, serverTimestamp } = await import('firebase/firestore');
-      const { db } = await import('../lib/firebase');
-      
-      const userDocRef = doc(db, 'users', firebaseUser.uid);
-      const userDocSnap = await getDoc(userDocRef);
-      
-      let role: UserRole = UserRole.PLAYER;
-      if (firebaseUser.phoneNumber && ADMIN_PHONE_NUMBERS.includes(firebaseUser.phoneNumber)) {
-        role = UserRole.ADMIN;
-      }
-      
-      if (userDocSnap.exists()) {
-        const userData = userDocSnap.data();
-        role = userData.role as UserRole;
-        if (firebaseUser.phoneNumber && ADMIN_PHONE_NUMBERS.includes(firebaseUser.phoneNumber)) {
-          role = UserRole.ADMIN;
-        }
+      const loginResult = await confirmPhoneOtp(confirmationResult, cleanedOtp);
+      if (loginResult) {
+        onLogin(loginResult.user.role as UserRole, loginResult.user.id);
       } else {
-        const displayId = `NS-${Math.floor(1000 + Math.random() * 9000)}`;
-        const defaultName = firebaseUser.phoneNumber ? `Gamer_${firebaseUser.phoneNumber.slice(-4)}` : 'Gamer';
-        const referralCode = (defaultName.split(' ')[0].substring(0, 4).toUpperCase() || 'REF') + Math.floor(1000 + Math.random() * 9000);
-        
-        const newUser = {
-          id: firebaseUser.uid,
-          uid: firebaseUser.uid,
-          email: '',
-          phoneNumber: firebaseUser.phoneNumber || '',
-          username: defaultName,
-          ign: defaultName,
-          displayId,
-          role: role,
-          walletBalance: 5,
-          profileImage: '',
-          referralCode,
-          referralsCount: 0,
-          createdAt: serverTimestamp(),
-          updatedAt: serverTimestamp(),
-        };
-        await setDoc(userDocRef, newUser);
+        throw new Error('Failed to retrieve or create user profile.');
       }
-      
-      onLogin(role, firebaseUser.uid);
     } catch (err: any) {
-      console.error('Error confirming OTP:', err);
-      setError(err.message || 'Invalid verification code. Please try again.');
+      console.error(err);
+      setError(err.message || 'Invalid OTP code. Please check and try again.');
     } finally {
       setLoading(false);
     }
   };
 
-  const handleEditPhone = () => {
+  const handleBackToPhone = () => {
     setStep('phone');
     setOtp('');
     setError(null);
+    if (recaptchaVerifierRef.current) {
+      try {
+        recaptchaVerifierRef.current.clear();
+      } catch (e) {}
+      recaptchaVerifierRef.current = null;
+    }
   };
 
   return (
@@ -236,6 +155,9 @@ export default function LoginPage({ onLogin }: LoginPageProps) {
       transition={{ duration: 0.5 }}
       className="relative flex flex-col items-center justify-center min-h-[calc(100vh-80px)] p-4 overflow-hidden"
     >
+      {/* Invisible container required for Firebase recaptcha */}
+      <div id="recaptcha-container"></div>
+
       {/* Immersive Background */}
       <div className="absolute inset-0 z-0">
         <img 
@@ -251,20 +173,17 @@ export default function LoginPage({ onLogin }: LoginPageProps) {
         initial={{ scale: 0.8, opacity: 0 }}
         animate={{ scale: 1, opacity: 1 }}
         transition={{ delay: 0.1 }}
-        className="mb-6 relative z-10"
+        className="mb-8 relative z-10"
       >
         <img 
           src="https://i.postimg.cc/fzk0J1zg/IMG-20260219-183118-760.webp" 
           alt="NS Tournaments Logo" 
-          className="w-20 h-20 object-contain mx-auto"
+          className="w-24 h-24 object-contain mx-auto"
           referrerPolicy="no-referrer"
         />
       </motion.div>
 
-      {/* Invisible reCAPTCHA container required by Firebase Auth */}
-      <div id="recaptcha-container" className="absolute z-50"></div>
-
-      <div className="bg-[var(--color-bg-secondary)] p-6 rounded-xl border border-white/10 shadow-2xl max-w-md w-full relative z-10 backdrop-blur-md">
+      <div className="bg-[var(--color-bg-secondary)] p-8 rounded-xl border border-white/10 shadow-2xl max-w-md w-full text-center relative z-10 backdrop-blur-md">
         {step === 'phone' ? (
           <motion.div
             key="phone-step"
@@ -273,48 +192,51 @@ export default function LoginPage({ onLogin }: LoginPageProps) {
             exit={{ opacity: 0, x: 20 }}
             className="space-y-6"
           >
-            <div className="text-center space-y-2">
-              <h1 className="text-2xl font-display font-bold text-[var(--color-text-primary)]">Verify Your Number</h1>
-              <p className="text-[var(--color-text-secondary)] text-xs">Enter your mobile number to receive a secure login OTP.</p>
+            <div className="space-y-2">
+              <h1 className="text-3xl font-display font-bold text-[var(--color-text-primary)]">Welcome to NS</h1>
+              <p className="text-[var(--color-text-secondary)] text-sm">Verify your phone number to start competing in tournaments.</p>
             </div>
 
             {error && (
-              <div className="p-3 bg-red-500/10 border border-red-500/20 rounded-lg text-left">
-                <p className="text-red-500 text-xs whitespace-pre-line leading-relaxed">{error}</p>
+              <div className="p-3 bg-red-500/10 border border-red-500/20 rounded-lg flex items-start gap-2 text-left">
+                <ShieldAlert className="w-5 h-5 text-red-500 shrink-0 mt-0.5" />
+                <p className="text-red-500 text-sm">{error}</p>
               </div>
             )}
 
             <form onSubmit={handleSendOtp} className="space-y-4">
-              <div className="space-y-1.5">
-                <label className="text-[var(--color-text-secondary)] text-xs font-semibold">Phone Number</label>
-                <div className="relative">
-                  <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-zinc-500 font-medium text-sm">
-                    <Phone className="w-4 h-4 mr-1 text-zinc-600" />
+              <div className="space-y-2 text-left">
+                <label htmlFor="phone-input" className="text-xs font-semibold text-[var(--color-text-secondary)] uppercase tracking-wider">
+                  Phone Number
+                </label>
+                <div className="relative flex items-center">
+                  <div className="absolute left-3 flex items-center text-[var(--color-text-secondary)] border-r border-white/10 pr-2 gap-1.5 font-medium text-sm">
+                    <PhoneIcon className="w-4 h-4 text-[var(--color-primary)]" />
                     <span>+91</span>
                   </div>
                   <input
+                    id="phone-input"
                     type="tel"
-                    value={phoneNumber}
-                    onChange={(e) => setPhoneNumber(e.target.value.replace(/\D/g, '').slice(0, 10))}
-                    placeholder="Enter 10 digit number"
-                    disabled={loading}
+                    placeholder="Enter 10-digit number"
+                    value={phone}
+                    onChange={(e) => setPhone(e.target.value.replace(/\D/g, '').slice(0, 10))}
                     required
-                    className="w-full bg-zinc-900/60 border border-white/10 rounded-lg py-3.5 pl-16 pr-4 text-white text-sm font-medium tracking-wide focus:outline-none focus:ring-2 focus:ring-[var(--color-accent)] focus:border-transparent transition-all placeholder-zinc-600"
+                    disabled={loading}
+                    className="w-full bg-[#141414] border border-white/10 rounded-lg py-3.5 pl-20 pr-4 text-white placeholder-gray-500 focus:outline-none focus:border-[var(--color-primary)] transition-all font-medium text-base tracking-wide"
                   />
                 </div>
-                <p className="text-[var(--color-text-secondary)] text-[10px] opacity-75">We will send a 6-digit OTP to verify your account.</p>
               </div>
 
               <button
                 type="submit"
-                disabled={loading || phoneNumber.length < 10}
-                className="w-full flex items-center justify-center gap-2 bg-[var(--color-accent)] hover:opacity-90 text-black font-bold py-3.5 px-6 rounded-lg transition-all transform active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed shadow-lg"
+                disabled={loading || phone.length < 10}
+                className="w-full flex items-center justify-center gap-2 bg-[var(--color-primary)] hover:bg-[var(--color-primary-hover)] text-black font-bold py-3.5 px-6 rounded-lg transition-all transform active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed shadow-lg"
               >
                 {loading ? (
-                  <RotateCw className="w-4 h-4 animate-spin" />
+                  <div className="w-5 h-5 border-2 border-black border-t-transparent rounded-full animate-spin" />
                 ) : (
                   <>
-                    <span>Send OTP</span>
+                    <span>Send Verification Code</span>
                     <ArrowRight className="w-4 h-4" />
                   </>
                 )}
@@ -329,147 +251,75 @@ export default function LoginPage({ onLogin }: LoginPageProps) {
             exit={{ opacity: 0, x: -20 }}
             className="space-y-6"
           >
-            <div className="text-center space-y-2">
-              <h1 className="text-2xl font-display font-bold text-[var(--color-text-primary)]">Enter OTP Code</h1>
-              <p className="text-[var(--color-text-secondary)] text-xs flex items-center justify-center gap-1.5">
-                Sent to <span className="text-white font-semibold">+91 {phoneNumber}</span>
-                <button 
-                  onClick={handleEditPhone}
-                  className="p-1 hover:bg-white/5 rounded-full text-[var(--color-accent)] transition-colors"
-                >
-                  <Edit2 className="w-3.5 h-3.5" />
-                </button>
+            <div className="space-y-2">
+              <h1 className="text-3xl font-display font-bold text-[var(--color-text-primary)] font-semibold">Enter OTP</h1>
+              <p className="text-[var(--color-text-secondary)] text-sm">
+                We sent a 6-digit confirmation code to <span className="text-white font-medium">+91 {phone}</span>
               </p>
             </div>
 
             {error && (
-              <div className="p-3 bg-red-500/10 border border-red-500/20 rounded-lg text-left">
-                <p className="text-red-500 text-xs whitespace-pre-line leading-relaxed">{error}</p>
+              <div className="p-3 bg-red-500/10 border border-red-500/20 rounded-lg flex items-start gap-2 text-left">
+                <ShieldAlert className="w-5 h-5 text-red-500 shrink-0 mt-0.5" />
+                <p className="text-red-500 text-sm">{error}</p>
               </div>
             )}
 
             <form onSubmit={handleVerifyOtp} className="space-y-4">
-              <div className="space-y-1.5">
-                <label className="text-[var(--color-text-secondary)] text-xs font-semibold">Verification Code</label>
-                <div className="relative">
-                  <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-zinc-500">
-                    <MessageSquare className="w-4 h-4 text-zinc-600" />
+              <div className="space-y-2 text-left">
+                <label htmlFor="otp-input" className="text-xs font-semibold text-[var(--color-text-secondary)] uppercase tracking-wider">
+                  Verification Code
+                </label>
+                <div className="relative flex items-center">
+                  <div className="absolute left-3 text-gray-500">
+                    <KeyRound className="w-5 h-5 text-[var(--color-primary)]" />
                   </div>
                   <input
+                    id="otp-input"
                     type="text"
                     pattern="\d*"
                     maxLength={6}
+                    placeholder="Enter 6-digit OTP"
                     value={otp}
                     onChange={(e) => setOtp(e.target.value.replace(/\D/g, '').slice(0, 6))}
-                    placeholder="Enter 6-digit code"
-                    disabled={loading}
                     required
-                    className="w-full bg-zinc-900/60 border border-white/10 rounded-lg py-3.5 pl-11 pr-4 text-white text-center text-lg font-bold tracking-[0.5em] focus:outline-none focus:ring-2 focus:ring-[var(--color-accent)] focus:border-transparent transition-all placeholder-zinc-600 placeholder:tracking-normal placeholder:text-sm placeholder:font-normal"
+                    disabled={loading}
+                    className="w-full bg-[#141414] border border-white/10 rounded-lg py-3.5 pl-12 pr-4 text-white text-center tracking-[0.5em] placeholder-gray-500 focus:outline-none focus:border-[var(--color-primary)] transition-all font-bold text-lg"
                   />
                 </div>
               </div>
 
               <button
                 type="submit"
-                disabled={loading || otp.length < 6}
-                className="w-full flex items-center justify-center gap-2 bg-[var(--color-accent)] hover:opacity-90 text-black font-bold py-3.5 px-6 rounded-lg transition-all transform active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed shadow-lg"
+                disabled={loading || otp.length !== 6}
+                className="w-full flex items-center justify-center gap-2 bg-[var(--color-primary)] hover:bg-[var(--color-primary-hover)] text-black font-bold py-3.5 px-6 rounded-lg transition-all transform active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed shadow-lg"
               >
                 {loading ? (
-                  <RotateCw className="w-4 h-4 animate-spin" />
+                  <div className="w-5 h-5 border-2 border-black border-t-transparent rounded-full animate-spin" />
                 ) : (
                   <>
-                    <span>Verify & Login</span>
-                    <ShieldCheck className="w-4 h-4" />
+                    <span>Verify & Continue</span>
+                    <Lock className="w-4 h-4" />
                   </>
                 )}
               </button>
             </form>
 
-            <div className="text-center pt-2">
-              <button
-                onClick={handleSendOtp}
-                disabled={loading || resendTimer > 0}
-                className="text-xs text-[var(--color-text-secondary)] hover:text-white transition-colors disabled:opacity-50"
-              >
-                {resendTimer > 0 ? `Resend OTP in ${resendTimer}s` : 'Resend OTP Code'}
-              </button>
-            </div>
+            <button
+              onClick={handleBackToPhone}
+              disabled={loading}
+              className="text-sm font-semibold text-[var(--color-primary)] hover:underline block mx-auto pt-2"
+            >
+              Change Phone Number
+            </button>
           </motion.div>
         )}
 
-        <p className="text-[var(--color-text-secondary)] text-[10px] text-center mt-6 px-4 opacity-50">
+        <p className="text-[var(--color-text-secondary)] text-xs px-4 mt-6">
           By signing in, you agree to our Terms of Service and Privacy Policy.
         </p>
       </div>
 
-      {/* Troubleshooting guide toggler */}
-      <div className="mt-4 max-w-md w-full relative z-10">
-        <button
-          type="button"
-          onClick={() => setShowTroubleshooting(!showTroubleshooting)}
-          className="w-full py-2.5 px-4 rounded-lg bg-zinc-900/60 border border-white/5 hover:border-white/10 text-xs font-semibold text-[var(--color-text-secondary)] hover:text-white flex items-center justify-center gap-2 transition-all cursor-pointer"
-        >
-          <HelpCircle className="w-4 h-4 text-[var(--color-accent)] animate-pulse" />
-          <span>Not receiving OTP? Click here for a 100% working solution</span>
-        </button>
-
-        {showTroubleshooting && (
-          <motion.div
-            initial={{ opacity: 0, y: -10 }}
-            animate={{ opacity: 1, y: 0 }}
-            className="mt-3 p-5 rounded-xl bg-zinc-950/90 border border-white/10 text-xs text-zinc-300 space-y-4 shadow-2xl backdrop-blur-md"
-          >
-            <div className="space-y-1">
-              <h3 className="font-bold text-sm text-[var(--color-accent)]">⚡ Instant Login with Test Phone Numbers</h3>
-              <p className="text-[11px] text-zinc-400">
-                To bypass SMS carrier delivery issues, DND delays, or free tier daily quotas, Firebase allows you to register standard "test numbers" for development. This works instantly.
-              </p>
-            </div>
-
-            <div className="space-y-2.5 pt-1.5 border-t border-white/5">
-              <h4 className="font-semibold text-white">How to set this up in Firebase:</h4>
-              <ol className="list-decimal list-inside space-y-2 text-[11px] text-zinc-300">
-                <li>Go to <strong className="text-white">Firebase Console &gt; Authentication &gt; Sign-in method</strong>.</li>
-                <li>Edit the <strong className="text-white">Phone</strong> provider.</li>
-                <li>Expand <strong className="text-white">Phone numbers for testing (optional)</strong>.</li>
-                <li>
-                  Add a test number (e.g. <code className="px-1.5 py-0.5 bg-zinc-800 rounded font-mono text-white">+91 76199 76199</code>) and an OTP verification code (e.g. <code className="px-1.5 py-0.5 bg-zinc-800 rounded font-mono text-white">123456</code>).
-                </li>
-                <li>Click <strong className="text-white">Add</strong> and then <strong className="text-white">Save</strong>.</li>
-                <li>Now enter that exact phone number on this screen and use your test code to log in instantly!</li>
-              </ol>
-            </div>
-
-            <div className="space-y-2.5 pt-2.5 border-t border-white/5">
-              <h4 className="font-semibold text-white flex items-center justify-between">
-                <span>Authorized Domains Checklist:</span>
-              </h4>
-              <p className="text-[11px] text-zinc-400">
-                Ensure these domains are whitelisted under <strong className="text-white">Firebase &gt; Authentication &gt; Settings &gt; Authorized Domains</strong>:
-              </p>
-              <div className="space-y-1.5">
-                {[
-                  'localhost',
-                  window.location.hostname
-                ].map((dom) => (
-                  <div key={dom} className="flex items-center justify-between bg-black/40 px-2.5 py-1.5 rounded border border-white/5">
-                    <span className="font-mono text-[10px] text-zinc-300 break-all select-all">{dom}</span>
-                    <button
-                      type="button"
-                      onClick={() => handleCopyText(dom)}
-                      className="p-1 hover:bg-white/5 rounded text-[var(--color-accent)] hover:text-white transition-all cursor-pointer flex items-center gap-1"
-                      title="Copy Domain"
-                    >
-                      {copiedDomain ? <Check className="w-3.5 h-3.5 text-green-500" /> : <Copy className="w-3.5 h-3.5" />}
-                    </button>
-                  </div>
-                ))}
-              </div>
-            </div>
-          </motion.div>
-        )}
-      </div>
-      
       <div className="mt-8 text-center relative z-10">
         <p className="text-xs text-[var(--color-text-secondary)] uppercase tracking-widest font-medium opacity-60">
           Powered by Shasak Singh

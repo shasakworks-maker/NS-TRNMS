@@ -26,17 +26,6 @@ import { initRealtimeListeners, stopRealtimeListeners, getUserById } from './ser
 import { auth } from './lib/firebase';
 import { onAuthStateChanged } from 'firebase/auth';
 
-// List of admin phone numbers
-export const ADMIN_PHONE_NUMBERS = [
-  '+919161226884', // User's actual phone number
-];
-
-export const isAdminUser = (firebaseUser: any) => {
-  if (!firebaseUser) return false;
-  return firebaseUser.email === 'ashokpal76199@gmail.com' || 
-         (firebaseUser.phoneNumber && ADMIN_PHONE_NUMBERS.includes(firebaseUser.phoneNumber));
-};
-
 export default function App() {
   const [currentUserRole, setCurrentUserRole] = useState<UserRole | null>(() => {
     const savedRole = localStorage.getItem('AUTH_ROLE');
@@ -63,9 +52,9 @@ export default function App() {
             if (userDoc.exists()) {
               const userData = userDoc.data();
               
-              // HEALING: Force role to admin for the owner email/phone
+              // HEALING: Force role to admin for the owner email
               let enforcedRole = userData.role as UserRole;
-              if (isAdminUser(firebaseUser)) {
+              if (firebaseUser.email === 'ashokpal76199@gmail.com') {
                 enforcedRole = UserRole.ADMIN;
               }
 
@@ -99,7 +88,7 @@ export default function App() {
               }
 
               // HEALING: Ensure admin correctly has their role in DB too
-              if (isAdminUser(firebaseUser) && userData.role !== UserRole.ADMIN) {
+              if (firebaseUser.email === 'ashokpal76199@gmail.com' && userData.role !== UserRole.ADMIN) {
                 updates.role = UserRole.ADMIN;
               }
 
@@ -119,23 +108,21 @@ export default function App() {
             } else {
               // User doc doesn't exist, but Auth user does.
               // This can happen if the creation during signup failed or was interrupted.
-              const role = isAdminUser(firebaseUser) ? UserRole.ADMIN : UserRole.PLAYER;
+              const role = firebaseUser.email === 'ashokpal76199@gmail.com' ? UserRole.ADMIN : UserRole.PLAYER;
               
               // Create the document if it's missing
               const { setDoc: setDocFn, serverTimestamp: serverTs } = await import('firebase/firestore');
               const { db } = await import('./lib/firebase');
               
-              const defaultName = firebaseUser.displayName || (firebaseUser.phoneNumber ? `Gamer_${firebaseUser.phoneNumber.slice(-4)}` : 'User');
-              const referralCode = (defaultName.split(' ')[0].substring(0, 4).toUpperCase() || 'REF') + Math.floor(1000 + Math.random() * 9000);
+              const referralCode = (firebaseUser.displayName?.split(' ')[0].substring(0, 4).toUpperCase() || 'REF') + Math.floor(1000 + Math.random() * 9000);
               const displayId = `NS-${Math.floor(1000 + Math.random() * 9000)}`;
 
               const newUser = {
                 id: firebaseUser.uid,
                 uid: firebaseUser.uid,
                 email: firebaseUser.email || '',
-                phoneNumber: firebaseUser.phoneNumber || '',
-                username: defaultName,
-                ign: defaultName,
+                username: firebaseUser.displayName || firebaseUser.email?.split('@')[0] || 'User',
+                ign: firebaseUser.displayName || firebaseUser.email?.split('@')[0] || 'User',
                 displayId,
                 role: role,
                 walletBalance: 5, // Welcome bonus
