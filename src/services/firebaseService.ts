@@ -53,7 +53,8 @@ import {
   onAuthStateChanged,
   updatePassword,
   GoogleAuthProvider,
-  signInWithRedirect
+  signInWithRedirect,
+  signInWithPopup
 } from 'firebase/auth';
 import { db, auth } from '../lib/firebase';
 
@@ -556,8 +557,69 @@ export const loginUser = async (email: string, password: string): Promise<{ user
 export const loginWithGoogle = async (): Promise<{ user: User } | null> => {
   try {
     const provider = new GoogleAuthProvider();
-    await signInWithRedirect(auth, provider);
-    return null;
+    const isIframe = typeof window !== 'undefined' && window.self !== window.top;
+
+    if (isIframe) {
+      console.log('Detected AI Studio iframe environment. Falling back to signInWithPopup to prevent 403 Google error.');
+      const result = await signInWithPopup(auth, provider);
+      const firebaseUser = result.user;
+
+      // Fetch user profile from Firestore or create it
+      const userDoc = await getDoc(doc(db, 'users', firebaseUser.uid));
+      if (userDoc.exists()) {
+        return { user: { ...userDoc.data(), id: userDoc.id } as User };
+      } else {
+        // Create profile for new Google user
+        const displayId = `NS-${Math.floor(1000 + Math.random() * 9000)}`;
+        const referralCode = (firebaseUser.displayName?.split(' ')[0].substring(0, 4).toUpperCase() || 'REF') + Math.floor(1000 + Math.random() * 9000);
+        
+        const newUser: User = {
+          id: firebaseUser.uid,
+          uid: firebaseUser.uid,
+          email: firebaseUser.email || '',
+          username: firebaseUser.displayName || 'User',
+          ign: firebaseUser.displayName || 'User',
+          displayId,
+          role: firebaseUser.email === 'ashokpal76199@gmail.com' ? 'admin' : 'player',
+          walletBalance: 5, // Welcome Bonus
+          profileImage: firebaseUser.photoURL || '',
+          referralCode,
+          referralsCount: 0,
+          createdAt: new Date(),
+          updatedAt: new Date(),
+        };
+        await setDoc(doc(db, 'users', firebaseUser.uid), cleanObject({
+          ...newUser,
+          createdAt: serverTimestamp(),
+          updatedAt: serverTimestamp(),
+        }));
+
+        // Add welcome transaction and notification
+        await addDoc(collection(db, 'transactions'), {
+          userId: firebaseUser.uid,
+          type: TransactionType.DEPOSIT,
+          amount: 5,
+          description: 'Welcome Bonus',
+          status: TransactionStatus.COMPLETED,
+          transactionDate: serverTimestamp()
+        });
+
+        await addDoc(collection(db, 'notifications'), {
+          userId: firebaseUser.uid,
+          title: 'Welcome to Nasid Esports!',
+          message: 'We have added ₹5 to your wallet as a welcome bonus. Enjoy!',
+          type: 'success',
+          isRead: false,
+          createdAt: serverTimestamp()
+        });
+
+        return { user: newUser };
+      }
+    } else {
+      console.log('Standalone mode. Using signInWithRedirect.');
+      await signInWithRedirect(auth, provider);
+      return null;
+    }
   } catch (error) {
     console.error('Google Login failed:', error);
     throw error;
