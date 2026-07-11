@@ -53,10 +53,7 @@ import {
   onAuthStateChanged,
   updatePassword,
   GoogleAuthProvider,
-  signInWithPopup,
-  RecaptchaVerifier,
-  signInWithPhoneNumber,
-  type ConfirmationResult
+  signInWithPopup
 } from 'firebase/auth';
 import { db, auth } from '../lib/firebase';
 
@@ -499,79 +496,6 @@ export const loginUser = async (email: string, password: string): Promise<{ user
     throw error;
   }
   return null;
-};
-
-export const loginWithPhone = async (phoneNumber: string, appVerifier: any): Promise<ConfirmationResult> => {
-  try {
-    const confirmationResult = await signInWithPhoneNumber(auth, phoneNumber, appVerifier);
-    return confirmationResult;
-  } catch (error: any) {
-    console.error('Phone login error:', error);
-    throw error;
-  }
-};
-
-export const confirmPhoneOtp = async (confirmationResult: ConfirmationResult, otpCode: string): Promise<{ user: User } | null> => {
-  try {
-    const result = await confirmationResult.confirm(otpCode);
-    const firebaseUser = result.user;
-
-    // Fetch user profile from Firestore
-    const userDoc = await getDoc(doc(db, 'users', firebaseUser.uid));
-    if (userDoc.exists()) {
-      return { user: { ...userDoc.data(), id: userDoc.id } as User };
-    } else {
-      // Create profile for new Phone user
-      const displayId = `NS-${Math.floor(1000 + Math.random() * 9000)}`;
-      const referralCode = 'REF' + Math.floor(1000 + Math.random() * 9000);
-      
-      const newUser: User = {
-        id: firebaseUser.uid,
-        uid: firebaseUser.uid,
-        email: firebaseUser.email || '',
-        phoneNumber: firebaseUser.phoneNumber || '',
-        username: firebaseUser.phoneNumber || 'User',
-        ign: firebaseUser.phoneNumber || 'User',
-        displayId,
-        role: 'player', // Default to player role
-        walletBalance: 5, // Welcome Bonus
-        profileImage: '',
-        referralCode,
-        referralsCount: 0,
-        createdAt: new Date(),
-        updatedAt: new Date(),
-      };
-      await setDoc(doc(db, 'users', firebaseUser.uid), cleanObject({
-        ...newUser,
-        createdAt: serverTimestamp(),
-        updatedAt: serverTimestamp(),
-      }));
-
-      // Add welcome transaction and notification
-      await addDoc(collection(db, 'transactions'), {
-        userId: firebaseUser.uid,
-        type: TransactionType.DEPOSIT,
-        amount: 5,
-        description: 'Welcome Bonus',
-        status: TransactionStatus.COMPLETED,
-        transactionDate: serverTimestamp()
-      });
-
-      await addDoc(collection(db, 'notifications'), {
-        userId: firebaseUser.uid,
-        title: 'Welcome to Nasid Esports!',
-        message: 'We have added ₹5 to your wallet as a welcome bonus. Enjoy!',
-        type: 'success',
-        isRead: false,
-        createdAt: serverTimestamp()
-      });
-
-      return { user: newUser };
-    }
-  } catch (error: any) {
-    console.error('OTP confirmation failed:', error);
-    throw error;
-  }
 };
 
 export const loginWithGoogle = async (): Promise<{ user: User } | null> => {
