@@ -24,7 +24,7 @@ import { UserRole } from './constants';
 import { initRealtimeListeners, stopRealtimeListeners, getUserById } from './services/firebaseService';
 
 import { auth } from './lib/firebase';
-import { onAuthStateChanged } from 'firebase/auth';
+import { onAuthStateChanged, getRedirectResult } from 'firebase/auth';
 
 export default function App() {
   const [currentUserRole, setCurrentUserRole] = useState<UserRole | null>(() => {
@@ -38,6 +38,17 @@ export default function App() {
   const [isAuthChecking, setIsAuthChecking] = useState(true);
 
   useEffect(() => {
+    // Handle redirect result to log errors or successful logins
+    getRedirectResult(auth)
+      .then((result) => {
+        if (result) {
+          console.log('Google redirect sign-in successful:', result.user);
+        }
+      })
+      .catch((error) => {
+        console.error('Google redirect sign-in error:', error);
+      });
+
     // Sync Firebase Auth state with App state
     const unsubscribeAuth = onAuthStateChanged(auth, async (firebaseUser) => {
       if (firebaseUser) {
