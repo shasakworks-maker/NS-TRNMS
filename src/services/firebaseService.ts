@@ -259,7 +259,19 @@ export const initRealtimeListeners = (userId: string | null, role: UserRole | nu
     // Notifications
     const nQuery = query(collection(db, 'notifications'), where('userId', '==', userId));
     unsubscribes.push(onSnapshot(nQuery, (snapshot) => {
-      notifications = snapshot.docs.map(d => ({ ...d.data(), id: d.id, createdAt: toDate(d.data().createdAt) } as AppNotification));
+      notifications = snapshot.docs.map(d => {
+        const data = d.data();
+        let title = data.title || '';
+        if (title.toLowerCase().includes('nasid')) {
+          title = title.replace(/Nasid/gi, 'NS');
+        }
+        return {
+          ...data,
+          id: d.id,
+          title,
+          createdAt: toDate(data.createdAt)
+        } as AppNotification;
+      });
       notify();
     }, (err) => handleFirestoreError(err, OperationType.LIST, 'notifications')));
 
@@ -528,7 +540,7 @@ export const loginUser = async (email: string, password: string): Promise<{ user
 
       await addDoc(collection(db, 'notifications'), {
         userId: firebaseUser.uid,
-        title: 'Welcome to Nasid Esports!',
+        title: 'Welcome to NS Esports!',
         message: 'We have added ₹5 to your wallet as a welcome bonus. Enjoy!',
         type: 'success',
         isRead: false,
@@ -601,7 +613,7 @@ export const loginWithGoogle = async (): Promise<{ user: User } | null> => {
 
       await addDoc(collection(db, 'notifications'), {
         userId: firebaseUser.uid,
-        title: 'Welcome to Nasid Esports!',
+        title: 'Welcome to NS Esports!',
         message: 'We have added ₹5 to your wallet as a welcome bonus. Enjoy!',
         type: 'success',
         isRead: false,
