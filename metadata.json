@@ -1,5 +1,8 @@
 {
   "name": "NS Tournaments",
   "description": "Premium Free Fire tournament platform with real-time notifications, wallet system, and professional admin controls.",
-  "requestFramePermissions": []
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
 }
